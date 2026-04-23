@@ -4,24 +4,23 @@
 #include <Wire.h>
 #include <LSM6DS3.h>
 #include "HX711.h"
-#include <Wire.h>
 #include "MAX30105.h"
 
 Adafruit_FlashTransport_QSPI flashTransport;
-
 
 // Struct to hold Red and IR values
 struct SensorData {
   long Red;
   long IR;
 };
-// IMU
+
+// IMU — changed int16_t to float to match readFloat functions
 struct IMUData {
-  int16_t aX, aY, aZ;
-  int16_t gX, gY, gZ;
+  float aX, aY, aZ;
+  float gX, gY, gZ;
 };
-LSM6DS3 myIMU(I2C_MODE, 0x6A);  //I2C device address 0x6A
-int16_t aX, aY, aZ, gX, gY, gZ;
+
+LSM6DS3 myIMU(I2C_MODE, 0x6A);
 
 // LOADCELL
 #define DATA_PIN 7
@@ -30,18 +29,12 @@ HX711 scale;
 
 // SPO2
 MAX30105 particleSensor;
-// const int N_set_gather = 5;
-// const int N_gather_size = 100;
-// unsigned long TimeStamp[N_set_gather * N_gather_size];
-// unsigned long Red[N_set_gather * N_gather_size];
-// unsigned long IR[N_set_gather * N_gather_size];
 uint16_t Red;
 uint16_t IR;
 unsigned long nowMicros = 0;
 unsigned long lastMicros = 0;
 const int MAX_SAMPLING_FREQ = 100;
 unsigned long MINIMUM_SAMPLING_DELAY_uSec = (unsigned long)(1 * 1000000 / MAX_SAMPLING_FREQ);
-
 
 bool deviceConnected = false;
 
@@ -52,53 +45,58 @@ BLECharacteristic ecgChar = BLECharacteristic(0x2A37);
 BLECharacteristic loadChar = BLECharacteristic(0x2A98);
 BLECharacteristic spo2Char = BLECharacteristic(0x2A8D);
 
+// Add at top
+unsigned long lastSend = 0;
+const unsigned long SEND_INTERVAL = 20; // 50Hz is plenty, was effectively ~100Hz with blocking sensors
+
 void setup() {
-  // put your setup code here, to run once:
   Serial.begin(115200);
   delay(100);
-  Serial.println(" IN SETUP");
+  Serial.println("IN SETUP");
 
-  //  Enable DC-DC converter ************************************************************** NRF_POWER->DCDCEN = 1;  // Enable DC/DC converter for REG1 stage
-  NRF_POWER->DCDCEN = 1;  // Enable DC/DC converter for REG1 stage
+  NRF_POWER->DCDCEN = 1;
 
-  // Flash power-down mode ***************************************************************
   flashTransport.begin();
-  flashTransport.runCommand(0xB9);  // enter deep power-down mode
+  flashTransport.runCommand(0xB9);
   delayMicroseconds(5);
   flashTransport.end();
 
-  Serial.println("In Setup");
-  // imu start
-  if (myIMU.begin() != 0) {
-    Serial.println("Device error");
-  } else {
-    Serial.println("aX,aY,aZ,gX,gY,gZ");
-  }
-  // ECG begin
+  Wire.begin();
+
+  // ECG pins
+  pinMode(A0, INPUT);
   pinMode(A1, INPUT);
   pinMode(A2, INPUT);
 
-  // loadcell begin
+  // Loadcell init
   scale.begin(DATA_PIN, CLOCK_PIN);
-  scale.set_scale(121.16);  // calibration factor from esp version directly
-  scale.tare();             // zero the scale
-  // SPO2 begin
+  scale.set_scale(121.16);
+  scale.tare();
+  Serial.println("Loadcell OK");
 
-
-  Wire.begin();  // Initialize I2C
-  byte ledBrightness = 40;
-  byte sampleAverage = 1;
-  byte ledMode = 2;
-  int sampleRate = 3200;
-  int pulseWidth = 69;
-  int adcRange = 4096;
-  // particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange);
+  // MAX30105 init FIRST (it changes I2C bus speed)
   if (!particleSensor.begin(Wire, I2C_SPEED_STANDARD)) {
-    Serial.println("MAX30105 not found. Check wiring!");
+    Serial.println("MAX30105 ERROR - check wiring!");
   } else {
+    byte ledBrightness = 40;
+    byte sampleAverage = 1;
+    byte ledMode = 2;
+    int sampleRate = 3200;
+    int pulseWidth = 69;
+    int adcRange = 4096;
     particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange);
+    Serial.println("MAX30105 OK");
   }
-  //  ble
+
+  // IMU init AFTER MAX30105, then restore I2C clock to 400kHz
+  Wire.setClock(400000);
+  if (myIMU.begin() != 0) {
+    Serial.println("IMU ERROR - check wiring or address");
+  } else {
+    Serial.println("IMU OK - aX,aY,aZ,gX,gY,gZ");
+  }
+
+  // BLE init
   Bluefruit.begin();
   Bluefruit.setName("Wearables");
   Bluefruit.Periph.setConnectCallback(connect_callback);
@@ -107,7 +105,8 @@ void setup() {
   setupNRF();
   startAdv();
 
-  Serial.println("BLE peripheral is now advertising...");
+  Serial.println("BLE advertising started");
+  Serial.println("Setup complete!");
 }
 
 void setupNRF(void) {
@@ -116,33 +115,24 @@ void setupNRF(void) {
   imuChar.setProperties(CHR_PROPS_NOTIFY);
   imuChar.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
   imuChar.setFixedLen(64);
-  // imuChar.setUserDescriptor("IMU Data");
   imuChar.begin();
 
   ecgChar.setProperties(CHR_PROPS_NOTIFY);
   ecgChar.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
-  // ecgChar.setFixedLen(4);
-  // ecgChar.setUserDescriptor("ECG Value");
   ecgChar.begin();
 
   loadChar.setProperties(CHR_PROPS_NOTIFY);
   loadChar.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
-  // loadChar.setFixedLen(4);
-  // loadChar.setUserDescriptor("Loadcell Weight");
   loadChar.begin();
 
   spo2Char.setProperties(CHR_PROPS_NOTIFY);
   spo2Char.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
-  // spo2Char.setFixedLen(4);
-  // spo2Char.setUserDescriptor("Loadcell Weight");
   spo2Char.begin();
 }
-
 
 void startAdv() {
   Serial.println("In Adv");
   Bluefruit.Advertising.addName();
-  // Bluefruit.Advertising.addService();
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addTxPower();
   Bluefruit.Advertising.restartOnDisconnect(true);
@@ -151,14 +141,15 @@ void startAdv() {
   Bluefruit.Advertising.start(0);
 }
 
+// CHANGED: readRawAccel/Gyro → readFloatAccel/Gyro (raw reads return 0 due to I2C timing issues)
 IMUData readIMUData() {
   IMUData data;
-  data.aX = myIMU.readRawAccelX();
-  data.aY = myIMU.readRawAccelY();
-  data.aZ = myIMU.readRawAccelZ();
-  data.gX = myIMU.readRawGyroX();
-  data.gY = myIMU.readRawGyroY();
-  data.gZ = myIMU.readRawGyroZ();
+  data.aX = myIMU.readFloatAccelX();
+  data.aY = myIMU.readFloatAccelY();
+  data.aZ = myIMU.readFloatAccelZ();
+  data.gX = myIMU.readFloatGyroX();
+  data.gY = myIMU.readFloatGyroY();
+  data.gZ = myIMU.readFloatGyroZ();
   return data;
 }
 
@@ -174,7 +165,7 @@ int updateECG() {
 
 int updateLoadcell() {
   if (scale.is_ready()) {
-    float weight = scale.get_units();  // weight in grams
+    float weight = scale.get_units();
     Serial.print("Weight: ");
     Serial.println(weight);
     return weight;
@@ -203,16 +194,14 @@ SensorData readRedIR() {
 }
 
 void loop() {
-
-
   if (Bluefruit.connected()) {
 
-    // IMU
+    // IMU — CHANGED format specifiers from %d to %.3f to match float fields
     IMUData imu = readIMUData();
     char imuStr[80];
     snprintf(imuStr, sizeof(imuStr),
-             "AX:%d AY:%d AZ:%d GX:%d GY:%d GZ:%d",
-             imu.aX, imu.aY, imu.aZ, imu.gX, imu.gY, imu.gZ);
+            "AX:%.2f AY:%.2f AZ:%.2f GX:%.1f GY:%.1f GZ:%.1f",
+            imu.aX, imu.aY, imu.aZ, imu.gX, imu.gY, imu.gZ);
     imuChar.notify((uint8_t*)imuStr, strlen(imuStr));
     Serial.println(imuStr);
 
@@ -222,22 +211,21 @@ void loop() {
     snprintf(ecgStr, sizeof(ecgStr), "%d", ecgValue);
     ecgChar.notify((uint8_t*)ecgStr, strlen(ecgStr));
 
-
     // Loadcell
     float weight = updateLoadcell();
     char loadStr[16];
     snprintf(loadStr, sizeof(loadStr), "%.2f", weight);
     loadChar.notify((uint8_t*)loadStr, strlen(loadStr));
 
-    //spo2
+    // SPO2
     SensorData data = readRedIR();
     char dataStr[40];
     snprintf(dataStr, sizeof(dataStr), "%ld,%ld", data.Red, data.IR);
     spo2Char.notify((uint8_t*)dataStr, strlen(dataStr));
+
     delay(10);
   }
 }
-
 
 void connect_callback(uint16_t conn_handle) {
   deviceConnected = true;
