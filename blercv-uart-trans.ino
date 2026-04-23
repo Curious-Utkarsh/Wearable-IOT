@@ -184,5 +184,5 @@ void loop() {
     BLEDevice::getScan()->start(0);
   }
 
-  delay(100);
+  delay(10);
 }
