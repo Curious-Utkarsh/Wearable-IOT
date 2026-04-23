@@ -281,134 +281,9 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>
-                <span>🏥</span>
-                Wearable IOT Dashboard
-            </h1>
-            <div>
-                <span class="status disconnected" id="status">Connecting...</span>
-            </div>
-        </div>
-
-        <div class="stats-bar">
-            <div class="stat-box">
-                <div class="stat-label">Messages</div>
-                <div class="stat-value" id="msgCount">0</div>
-            </div>
-            <div class="stat-box">
-                <div class="stat-label">Connection Time</div>
-                <div class="stat-value" id="connTime">00:00</div>
-            </div>
-            <div class="stat-box">
-                <div class="stat-label">Data Rate</div>
-                <div class="stat-value" id="dataRate">0/s</div>
-            </div>
-        </div>
-
-        <div class="sensor-grid">
-            <!-- ECG Card -->
-            <div class="sensor-card">
-                <div class="sensor-header">
-                    <span class="sensor-icon">❤️</span>
-                    <span class="sensor-title">ECG</span>
-                </div>
-                <div class="sensor-value" id="ecgValue">--</div>
-                <div class="sensor-label">Current Reading</div>
-                <canvas id="ecgChart"></canvas>
-            </div>
-
-            <!-- Heart Rate (Red/IR) Card -->
-            <div class="sensor-card">
-                <div class="sensor-header">
-                    <span class="sensor-icon">💓</span>
-                    <span class="sensor-title">Heart Rate Sensor</span>
-                </div>
-                <div class="sensor-data">
-                    <div class="data-item">
-                        <div class="data-label">Red</div>
-                        <div class="data-value" id="redValue">--</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">IR</div>
-                        <div class="data-value" id="irValue">--</div>
-                    </div>
-                </div>
-                <canvas id="redirChart"></canvas>
-            </div>
-
-            <!-- Load Cell Card -->
-            <div class="sensor-card">
-                <div class="sensor-header">
-                    <span class="sensor-icon">⚖️</span>
-                    <span class="sensor-title">Load Cell</span>
-                </div>
-                <div class="sensor-value" id="loadValue">--</div>
-                <div class="sensor-label">Force (Units)</div>
-                <canvas id="loadChart"></canvas>
-            </div>
-
-            <!-- IMU Accelerometer Card -->
-            <div class="sensor-card">
-                <div class="sensor-header">
-                    <span class="sensor-icon">📐</span>
-                    <span class="sensor-title">Accelerometer</span>
-                </div>
-                <div class="sensor-data">
-                    <div class="data-item">
-                        <div class="data-label">X-Axis</div>
-                        <div class="data-value" id="axValue">--</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Y-Axis</div>
-                        <div class="data-value" id="ayValue">--</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Z-Axis</div>
-                        <div class="data-value" id="azValue">--</div>
-                    </div>
-                </div>
-                <canvas id="accelChart"></canvas>
-            </div>
-
-            <!-- IMU Gyroscope Card -->
-            <div class="sensor-card">
-                <div class="sensor-header">
-                    <span class="sensor-icon">🌀</span>
-                    <span class="sensor-title">Gyroscope</span>
-                </div>
-                <div class="sensor-data">
-                    <div class="data-item">
-                        <div class="data-label">X-Axis</div>
-                        <div class="data-value" id="gxValue">--</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Y-Axis</div>
-                        <div class="data-value" id="gyValue">--</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Z-Axis</div>
-                        <div class="data-value" id="gzValue">--</div>
-                    </div>
-                </div>
-                <canvas id="gyroChart"></canvas>
-            </div>
-        </div>
-
-        <div class="log-container">
-            <div class="log-header">
-                <h3>📋 Live Data Log</h3>
-                <button onclick="clearLog()">Clear</button>
-            </div>
-            <div id="logEntries">
-                <div class="no-data">Waiting for data...</div>
-            </div>
-        </div>
-    </div>
 
     <script>
-        const WS_URL = 'ws://10.185.151.183:1234';
+        const WS_URL = 'ws://10.185.153.66:1234';
         let ws = null;
         let messageCount = 0;
         let connectTime = null;
@@ -606,7 +481,15 @@
                     break;
 
                 case 'IMU':
-                    parseIMUData(data.raw);
+                    // FIX: use direct fields instead of parsing raw string
+                    document.getElementById('axValue').textContent = data.ax ?? '--';
+                    document.getElementById('ayValue').textContent = data.ay ?? '--';
+                    document.getElementById('azValue').textContent = data.az ?? '--';
+                    document.getElementById('gxValue').textContent = data.gx ?? '--';
+                    document.getElementById('gyValue').textContent = data.gy ?? '--';
+                    document.getElementById('gzValue').textContent = data.gz ?? '--';
+                    updateMultiChart(accelChart, data.ax, data.ay, data.az);
+                    updateMultiChart(gyroChart, data.gx, data.gy, data.gz);
                     break;
             }
         }
@@ -732,5 +615,132 @@
         };
         document.head.appendChild(script);
     </script>
+
+    <div class="container">
+        <div class="header">
+            <h1>
+                <span>🏥</span>
+                Wearable IOT Dashboard
+            </h1>
+            <div>
+                <span class="status disconnected" id="status">Connecting...</span>
+            </div>
+        </div>
+
+        <div class="stats-bar">
+            <div class="stat-box">
+                <div class="stat-label">Messages</div>
+                <div class="stat-value" id="msgCount">0</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Connection Time</div>
+                <div class="stat-value" id="connTime">00:00</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Data Rate</div>
+                <div class="stat-value" id="dataRate">0/s</div>
+            </div>
+        </div>
+
+        <div class="sensor-grid">
+            <!-- ECG Card -->
+            <div class="sensor-card">
+                <div class="sensor-header">
+                    <span class="sensor-icon">❤️</span>
+                    <span class="sensor-title">ECG</span>
+                </div>
+                <div class="sensor-value" id="ecgValue">--</div>
+                <div class="sensor-label">Current Reading</div>
+                <canvas id="ecgChart"></canvas>
+            </div>
+
+            <!-- Heart Rate (Red/IR) Card -->
+            <div class="sensor-card">
+                <div class="sensor-header">
+                    <span class="sensor-icon">💓</span>
+                    <span class="sensor-title">Heart Rate Sensor</span>
+                </div>
+                <div class="sensor-data">
+                    <div class="data-item">
+                        <div class="data-label">Red</div>
+                        <div class="data-value" id="redValue">--</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">IR</div>
+                        <div class="data-value" id="irValue">--</div>
+                    </div>
+                </div>
+                <canvas id="redirChart"></canvas>
+            </div>
+
+            <!-- Load Cell Card -->
+            <div class="sensor-card">
+                <div class="sensor-header">
+                    <span class="sensor-icon">⚖️</span>
+                    <span class="sensor-title">Load Cell</span>
+                </div>
+                <div class="sensor-value" id="loadValue">--</div>
+                <div class="sensor-label">Force (Units)</div>
+                <canvas id="loadChart"></canvas>
+            </div>
+
+            <!-- IMU Accelerometer Card -->
+            <div class="sensor-card">
+                <div class="sensor-header">
+                    <span class="sensor-icon">📐</span>
+                    <span class="sensor-title">Accelerometer</span>
+                </div>
+                <div class="sensor-data">
+                    <div class="data-item">
+                        <div class="data-label">X-Axis</div>
+                        <div class="data-value" id="axValue">--</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Y-Axis</div>
+                        <div class="data-value" id="ayValue">--</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Z-Axis</div>
+                        <div class="data-value" id="azValue">--</div>
+                    </div>
+                </div>
+                <canvas id="accelChart"></canvas>
+            </div>
+
+            <!-- IMU Gyroscope Card -->
+            <div class="sensor-card">
+                <div class="sensor-header">
+                    <span class="sensor-icon">🌀</span>
+                    <span class="sensor-title">Gyroscope</span>
+                </div>
+                <div class="sensor-data">
+                    <div class="data-item">
+                        <div class="data-label">X-Axis</div>
+                        <div class="data-value" id="gxValue">--</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Y-Axis</div>
+                        <div class="data-value" id="gyValue">--</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Z-Axis</div>
+                        <div class="data-value" id="gzValue">--</div>
+                    </div>
+                </div>
+                <canvas id="gyroChart"></canvas>
+            </div>
+        </div>
+
+        <div class="log-container">
+            <div class="log-header">
+                <h3>📋 Live Data Log</h3>
+                <button onclick="clearLog()">Clear</button>
+            </div>
+            <div id="logEntries">
+                <div class="no-data">Waiting for data...</div>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
