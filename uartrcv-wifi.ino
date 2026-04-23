@@ -8,7 +8,7 @@
 const char* ssid = "NCAIR IOT";
 const char* password = "Asim@123Tewari";
 
-const char* ws_host = "10.185.151.183";
+const char* ws_host = "10.185.153.66";
 const uint16_t ws_port = 1234;
 const char* ws_path = "/";
 
